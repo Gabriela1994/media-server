@@ -1,0 +1,147 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.9
+    container_name: jellyfin
+    user: ${PUID}:${PGID}
+    networks:
+      - media_net
+    volumes:
+      - ${CONFIG_DIR}/jellyfin:/config
+      - ${MEDIA_DIR}:/movies
+    restart: unless-stopped
+
+    labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.local`)"
+    - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
+
+  qbittorrent:
+    image: linuxserver/qbittorrent:4.6.5
+    container_name: qbittorrent
+    networks:
+      - media_net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - WEBUI_USERNAME=${QBIT_USERNAME}
+      - WEBUI_PASSWORD=${QBIT_PASSWORD}
+    volumes:
+      - ${CONFIG_DIR}/qbittorrent:/config
+      - ./data/downloads:/downloads 
+    restart: unless-stopped
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.local`)"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+
+  radarr:
+    image: linuxserver/radarr:5.4.6
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+    volumes:
+      - ${CONFIG_DIR}/radarr:/config
+      - ${MEDIA_DIR}:/movies
+      - ./data/downloads:/downloads
+    networks:
+      - media_net
+    restart: unless-stopped
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.local`)"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+
+  prowlarr:
+    image: linuxserver/prowlarr:1.15.0
+    container_name: prowlarr
+    networks:
+      - media_net
+    volumes:
+      - ${CONFIG_DIR}/prowlarr:/config
+    restart: unless-stopped
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.local`)"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: cadvisor
+    privileged: true 
+    devices:
+      - /dev/kmsg
+    networks:
+      - media_net
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    restart: unless-stopped
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cadvisor.rule=Host(`cadvisor.local`)"
+      - "traefik.http.services.cadvisor.loadbalancer.server.port=8080"
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus
+    user: ${PUID}:${PGID}
+    networks:
+      - media_net
+    volumes:
+      - ${CONFIG_DIR}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ${CONFIG_DIR}/prometheus:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    restart: unless-stopped
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.local`)"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    networks:
+      - media_net
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+    volumes:
+      - ./data/grafana_data:/var/lib/grafana
+    restart: unless-stopped
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.local`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+  proxy:
+      container_name: traefik
+      image: traefik:v2.11
+      command: 
+        - --api.insecure=true
+        - --providers.docker=true
+        - --providers.docker.exposedbydefault=false
+        - --entrypoints.web.address=:80
+        - --providers.docker.network=media_net
+      ports:
+        - "80:80"
+        - "8081:8080"
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock:ro
+      restart: unless-stopped
+      networks:
+        - media_net
+
+networks:
+  media_net:
+    driver: bridge

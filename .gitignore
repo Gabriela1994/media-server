@@ -1,0 +1,10 @@
+# Ignorar las carpetas donde las apps guardan sus datos pesados
+config/
+data/
+
+# Ignorar el archivo de variables reales (seguridad)
+.env
+
+# Ignorar archivos de sistema y logs
+*.log
+.DS_Store
